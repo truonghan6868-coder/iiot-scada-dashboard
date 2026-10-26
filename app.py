@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- CẤU HÌNH MQTT BROKER (Sử dụng cổng bảo mật WSS 8884 trên Cloud) ---
+# --- CẤU HÌNH MQTT BROKER ---
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 8884
 MQTT_TELEMETRY_TOPIC = "factory/cuchi/line1/temperature"
@@ -54,12 +54,13 @@ def on_connect(client, userdata, flags, rc):
     print(f"⚠️ Kết nối thất bại, mã lỗi: {rc}")
 
 
-# Khởi tạo MQTT Client chạy ngầm duy nhất với chứng chỉ bảo mật TLS/WSS cho Cloud
+# Khởi tạo MQTT Client chạy ngầm duy nhất với chứng chỉ bảo mật TLS/WSS và Path cho Cloud
 @st.cache_resource
 def init_mqtt_subscriber():
   client = mqtt.Client(
       client_id="", clean_session=True, transport="websockets"
   )
+  client.ws_set_options(path="/mqtt")
   client.on_message = on_message
   client.on_connect = on_connect
   client.reconnect_delay_set(min_delay=1, max_delay=60)
