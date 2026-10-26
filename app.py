@@ -13,9 +13,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- CẤU HÌNH MQTT BROKER ---
+# --- CẤU HÌNH MQTT BROKER (Sử dụng cổng bảo mật WSS 8884 trên Cloud) ---
 MQTT_BROKER = "broker.hivemq.com"
-MQTT_PORT = 8000
+MQTT_PORT = 8884
 MQTT_TELEMETRY_TOPIC = "factory/cuchi/line1/temperature"
 MQTT_COMMAND_TOPIC = "factory/cuchi/line1/command"
 
@@ -48,13 +48,13 @@ def on_message(client, userdata, msg):
 
 def on_connect(client, userdata, flags, rc):
   if rc == 0:
-    print("✅ Dashboard đã kết nối MQTT Broker qua WebSocket thành công!")
+    print("✅ Dashboard đã kết nối MQTT Broker qua WSS thành công!")
     client.subscribe(MQTT_TELEMETRY_TOPIC)
   else:
     print(f"⚠️ Kết nối thất bại, mã lỗi: {rc}")
 
 
-# Khởi tạo MQTT Client chạy ngầm duy nhất
+# Khởi tạo MQTT Client chạy ngầm duy nhất với chứng chỉ bảo mật TLS/WSS cho Cloud
 @st.cache_resource
 def init_mqtt_subscriber():
   client = mqtt.Client(
@@ -63,6 +63,9 @@ def init_mqtt_subscriber():
   client.on_message = on_message
   client.on_connect = on_connect
   client.reconnect_delay_set(min_delay=1, max_delay=60)
+
+  # Kích hoạt SSL/TLS để chạy an toàn trên môi trường HTTPS của Streamlit Cloud
+  client.tls_set()
 
   try:
     client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
@@ -84,12 +87,11 @@ st.markdown(
 # --- SIDEBAR: THÔNG SỐ, ĐIỀU KHIỂN, CẢNH BÁO & BÁO CÁO ---
 with st.sidebar:
   st.header("⚙️ Thông số hệ thống")
-  st.info(f"Broker: {MQTT_BROKER} (WebSocket)")
+  st.info(f"Broker: {MQTT_BROKER} (WSS)")
   st.success("Trạng thái: Đang kết nối MQTT ổn định 🟢")
 
   st.markdown("---")
   st.header("🚨 Cài đặt Ngưỡng Cảnh Báo")
-  # Cấu hình ngưỡng cảnh báo nhiệt độ tối đa
   alarm_limit_1 = st.number_input(
       "Ngưỡng Alarm Temp 1 (°C)", min_value=0.0, max_value=150.0, value=45.0
   )
@@ -100,7 +102,6 @@ with st.sidebar:
   st.markdown("---")
   st.header("🎛️ Bảng điều khiển (Command)")
 
-  # Form điều khiển Setpoint
   with st.form(key="control_form"):
     new_setpoint_1 = st.number_input(
         "Cài đặt Setpoint 1 (°C)",
@@ -121,7 +122,6 @@ with st.sidebar:
   st.markdown("---")
   st.header("📊 Quản lý Báo cáo Lịch sử")
 
-  # Nút tải xuống file báo cáo CSV
   try:
     with open(CSV_LOG_FILE, "rb") as f:
       st.download_button(
@@ -156,7 +156,6 @@ def render_dashboard():
     if len(st.session_state.history_df) > 50:
       st.session_state.history_df = st.session_state.history_df.iloc[1:]
 
-    # Ghi log tự động vào file CSV
     log_record = pd.DataFrame(
         {
             "Timestamp": [
@@ -174,11 +173,9 @@ def render_dashboard():
     except Exception as e:
       print(f"Lỗi ghi log CSV: {e}")
 
-  # Kiểm tra trạng thái Cảnh báo Ngưỡng (Alarm Checking)
   is_alarm_1 = st.session_state.temp_1 > alarm_limit_1
   is_alarm_2 = st.session_state.temp_2 > alarm_limit_2
 
-  # Hiển thị cảnh báo banner nếu có sự cố vượt ngưỡng
   if is_alarm_1 or is_alarm_2:
     alarm_msg = "⚠️ **CẢNH BÁO QUÁ NHIỆT:** "
     if is_alarm_1:
@@ -187,7 +184,6 @@ def render_dashboard():
       alarm_msg += f"[Nhiệt độ 2 vượt ngưỡng {alarm_limit_2}°C]"
     st.error(alarm_msg)
 
-  # Hiển thị các thẻ chỉ số (Metric Cards)
   col1, col2 = st.columns(2)
   with col1:
     delta_text = (
